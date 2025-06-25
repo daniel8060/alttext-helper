@@ -62,5 +62,4 @@ if uploaded_file:
         )
 
         alt_text = response.output_text
-        st.success("Generated Alt Text:")
-        st.write(alt_text)
+        st.success(f"Generated Alt Text:\n{alt_text}")
