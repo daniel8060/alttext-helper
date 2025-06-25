@@ -1,0 +1,22 @@
+[project]
+name = "alt-text-generation"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "daniel8060",email = "57083361+daniel8060@users.noreply.github.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "openai (>=1.91.0,<2.0.0)",
+    "python-dotenv (>=1.1.1,<2.0.0)",
+    "streamlit (>=1.46.0,<2.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "alt_text_generation", from = "src"}]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
