@@ -1,2 +1,6 @@
 secrets.toml
 *.pyc
+clientsettings.yaml
+batches/
+*.zip
+.DS_Store

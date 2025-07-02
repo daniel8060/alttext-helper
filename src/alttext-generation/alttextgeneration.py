@@ -1,37 +1,29 @@
 import streamlit as st
-import openai
 from PIL import Image
+from openai import OpenAI
 import io
 import base64
+import json
+import time
 
-from config import get_client_settings
+from config import get_customer_settings
 
-def encode_image(im : Image.Image) -> str:
-    """Convert the uploaded image to a base64 encoded string."""
-    #get the image bytes
-    image_bytes = io.BytesIO()
-    im.save(image_bytes, format="JPEG")
-    image_bytes.seek(0)  # Move the cursor to the beginning of the BytesIO
+from utils import zip_to_jsonl
+from batch import *
 
-    #ecnode the bytes to base64 and decode to utf-8
-    return base64.b64encode(image_bytes.getvalue()).decode("utf-8")
-
-def downsample_image(image : Image.Image, max_size: tuple[int]):
-    """Downsample the image if it exceeds the max size."""
-    if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
-        image = image.resize(max_size, Image.Resampling.LANCZOS)
-    return image
 
 # Access the secret key
-openai.api_key = st.secrets["openai"]["api_key"]
+# openai.api_key = st.secrets["openai"]["api_key"]
+# Initialize the OpenAI client
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 #get the client settings
-client_settings = get_client_settings()
-default_prompt = client_settings['prompt']
+customer_settings = get_customer_settings()
+default_prompt = customer_settings['prompt']
 
 st.title("Alt-Text Generator")
 
-st.write(client_settings["max_size_tuple"])
+st.write(customer_settings["max_size_tuple"])
 
 #input form 
 with st.form(key="alttext_form"):
@@ -57,42 +49,55 @@ with st.form(key="alttext_form"):
 
     selected_tone = st.selectbox("Select a tone for the alt text", tone_options, index=2)
 
-    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+    uploaded_file = st.file_uploader("Upload an image",)# type=["png", "jpg", "jpeg"])
 
     subm = st.form_submit_button("Generate Alt Text")
 
 if subm and uploaded_file:
 
-    raw_bytes = uploaded_file.read()  # Read the raw bytes of the uploaded file
-
-    byte_stream = io.BytesIO(raw_bytes)  # Create a BytesIO stream from the raw bytes
-    image = Image.open(byte_stream) #now turn it into an image
-
-    # st.image(image, caption="Uploaded Image", use_container_width=True)
-
-    #  Resize if larger than your threshold (optional safeguard)
-    image = downsample_image(image, max_size=client_settings["max_size_tuple"])
-
-    # Read the image as bytes
-    image_bytes = encode_image(image)
-
     submit_prompt = default_prompt.replace("__tone__", selected_tone)
 
-    with st.spinner("Generating alt text..."):
-        response = openai.responses.create(
-            model="gpt-4o-mini",
-            input=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": submit_prompt},
-                        {"type": "input_image",
-                            "image_url": "data:image/jpeg;base64," + image_bytes,
-                        },
-                    ],
-                }
-            ],
-        )
+    with st.spinner("Generating batch requests..."):
+        start_time = time.time()
+        jsonl_path = zip_to_jsonl(uploaded_file
+                                , None
+                                , submit_prompt
+                                , model="gpt-4o-mini"
+                                , maxsize=customer_settings["max_size_tuple"]
+                                )
+        elapsed = time.time() - start_time
+        print(f"zip_to_jsonl() took {elapsed:.2f} seconds.")
 
-        alt_text = response.output_text
-        st.success(f"Generated Alt Text:\n{alt_text}")
+    with st.spinner("Uploadingn file for batch job..."):
+        start_time = time.time()
+        batch_input_f= upload_batch_file(client, jsonl_path)
+        elapsed = time.time() - start_time
+        st.write(f'Uploaded file ID: {batch_input_f.id}')
+        print(f"upload_batch_file() took {elapsed:.2f} seconds.")
+
+    with st.spinner("Creating batch job..."):
+        start_time = time.time()
+        batch = create_batch(client,batch_input_f)
+        elapsed = time.time() - start_time
+        print(f"create_batch() took {elapsed:.2f} seconds.")
+
+
+st.header("Submitted Batches")
+batches = client.batches.list(limit=10)
+print(f'\n{batches.data}\n')
+st.table(pd.DataFrame(columns=['id','status','output_file_id','created_at']
+                      , data=[(b.id, b.status, b.output_file_id, b.created_at) for b in batches.data]
+                      )
+            )
+
+test_file = 'file-4EJVyAfs4XsghM2ZxWbxKp'
+
+file_response = client.files.content(test_file)
+lines = file_response.text.strip().split("\n")
+records = [json.loads(line) for line in lines]
+
+for r in records : 
+    st.write(r['response']['body']['output'][0]["content"][0]["text"])
+
+st.table(load_finished_captions(client, test_file))
+
