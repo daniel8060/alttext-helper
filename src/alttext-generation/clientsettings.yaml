@@ -1,5 +1,0 @@
-prompt_template: "Describe this image with concise alt text in a __tone__ tone. Please try to keep the length {max_length}"
-max_length: "2 short sentences"
-max_image_size:
-  width: 549
-  height: 652
