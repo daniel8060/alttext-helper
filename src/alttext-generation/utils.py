@@ -6,8 +6,21 @@ import base64
 import datetime
 import uuid
 from pathlib import Path
-from openai import OpenAI
+import logging 
+from typing import Iterator
+from pydantic import BaseModel, Field
 
+def is_valid_image(file: str) -> bool:
+    """Check if the file is a valid image based on its extension and that is not a mac __MACOSX file."""
+
+    valid_extensions = (".png", ".jpg", ".jpeg")
+
+    if file.startswith("__MACOSX/") or file.split("/")[-1].startswith("._"):
+        return False
+    if not file.lower().endswith((".png", ".jpg", ".jpeg")):
+        return False 
+    
+    return True
 
 def encode_image(im : Image.Image) -> str:
     """Convert the uploaded image to a base64 encoded string."""
@@ -25,6 +38,96 @@ def downsample_image(image : Image.Image, max_size: tuple[int]):
         image = image.resize(max_size, Image.Resampling.LANCZOS)
     return image
 
+def convert_images_to_jsonl_lines(
+    images: list[tuple[str, bytes]],
+    prompt: str,
+    maxsize: tuple[int],
+    model: str
+) -> list[str]:
+    """Convert a list of (filename, bytes) images into JSONL lines."""
+    lines = []
+    for filename, data in images:
+        image = Image.open(io.BytesIO(data)).convert("RGB")
+        image = downsample_image(image, max_size=maxsize)
+        encoded = encode_image(image)
+        entry = {
+            "custom_id": filename,
+            "method": "POST",
+            "url": "/v1/responses",
+            "body": {
+                "model": model,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": prompt},
+                            {"type": "input_image",
+                             "image_url": f"data:image/jpeg;base64,{encoded}"}
+                        ]
+                    }
+                ]
+            }
+        }
+        line = json.dumps(entry) + "\n"
+        lines.append(line)
+    return lines
+
+def split_zip_to_batches_by_size(
+    zip_path: str,
+    prompt: str,
+    maxsize: tuple[int],
+    model: str,
+    max_lines: int = 500,
+    max_bytes: int = 190 * 1024 * 1024
+) -> Iterator[list[str]]:
+    """Yield batches of JSONL lines from a zip file, keeping within size limits."""
+    with zipfile.ZipFile(zip_path, 'r') as archive:
+        buffer = []
+        total_bytes = 0
+
+        for file in archive.namelist():
+            
+            if not is_valid_image(file):
+                logging.debug(f"Skipping {file}: Not a valid image file")
+                continue
+
+            with archive.open(file) as f:
+                data = f.read()
+
+            # Convert this image to JSONL line
+            lines = convert_images_to_jsonl_lines(
+                [(file, data)], prompt, maxsize, model
+            )
+            #since we're calling on a single image, grab the single element
+            line = lines[0]
+            line_bytes = len(line.encode("utf-8"))
+
+            end_condition = (total_bytes + line_bytes > max_bytes or len(buffer) >= max_lines)
+
+            #still have lines left and this line would exceed alotted capacity
+            if buffer and end_condition:
+
+                #yield and reset our capacities 
+                yield buffer
+                buffer = []
+                total_bytes = 0
+
+            #deal with current line 
+            buffer.append(line)
+            total_bytes += line_bytes
+
+        if buffer:
+            yield buffer
+
+def write_jsonl_batch(
+        lines : list[str],
+        output_path : Path
+) -> None: 
+    """Write a list of JSONL lines to a file."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        for line in lines:
+            f.write(line)
 
 def zip_to_jsonl(zip_path: str, jsonl_path: str = None, prompt: str = None, maxsize: tuple[int] = None, model: str = "gpt-4o-mini"):
     
@@ -38,9 +141,8 @@ def zip_to_jsonl(zip_path: str, jsonl_path: str = None, prompt: str = None, maxs
         entries = []
         for file in archive.namelist():
             # Skip macOS metadata files
-            if file.startswith("__MACOSX/") or file.split("/")[-1].startswith("._"):
-                continue
-            if not file.lower().endswith((".png", ".jpg", ".jpeg")):
+            if not is_valid_image(file):
+                logging.debug(f"Skipping {file}: Not a valid image file")
                 continue
             try:
                 with archive.open(file) as f:
@@ -129,5 +231,3 @@ def generate_batch_filename(base_dir="batches", suffix="") -> Path:
     unique_id = uuid.uuid4().hex[:8]
     filename = f"{timestamp}_{unique_id}{suffix}.jsonl"
     return Path(base_dir) / filename
-
-
