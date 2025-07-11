@@ -2,7 +2,7 @@ from pathlib import Path
 import yaml
 from typing import Any
 
-def get_client_settings() -> dict[str,str|int]:
+def get_customer_settings() -> dict[str,str|int]:
     """Load the client settings from the config file."""
     config_path = Path(__file__).parent.parent.parent/ "clientsettings.yaml"
 

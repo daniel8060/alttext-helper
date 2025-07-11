@@ -106,6 +106,7 @@ def split_zip_to_batches_by_size(
 
             #still have lines left and this line would exceed alotted capacity
             if buffer and end_condition:
+                logging.debug(f"Yielding batch of {len(buffer)} lines, total bytes: {total_bytes}")
 
                 #yield and reset our capacities 
                 yield buffer
