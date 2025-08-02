@@ -18,9 +18,12 @@ import enum
 from sqlalchemy import Enum as SQLEnum
 
 class JobStatus(enum.Enum):
+    VALIDATING = "validating"
     PENDING = "pending"
+    IN_PROGRESS = "in_progress"
     FAILED = "failed"
     COMPLETED = "completed"
+
 
 class Base(DeclarativeBase):
     pass 

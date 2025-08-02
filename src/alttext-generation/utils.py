@@ -163,11 +163,11 @@ def zip_to_jsonl(zip_path: str, jsonl_path: str = None, prompt: str = None, maxs
                         "url": "/v1/responses",
                         "body": {
                             "model": model,
+                            "instructions": prompt,
                             "input": [
                                             {
                                                 "role": "user",
                                                 "content": [
-                                                    {"type": "input_text", "text": prompt},
                                                     {"type": "input_image",
                                                         "image_url": "data:image/jpeg;base64," + encoded_image,
                                                     },
