@@ -80,8 +80,8 @@ class Job(Base):
         nullable=False
     )
 
-    request_template: Mapped[dict] = mapped_column(
-        JSON,
+    system_prompt: Mapped[str] = mapped_column(
+        Text,
         nullable=False
     )
 
@@ -124,21 +124,28 @@ class Batch(Base):
         nullable=False
     )
 
+    #this it the i-th batch of the job
     sequence_number: Mapped[int] = mapped_column(
         Integer,
         nullable=False
-    )
-
-    output_file_id: Mapped[str] = mapped_column(
-        String,
-        default = lambda : None,
-        nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(datetime.timezone.utc),
         server_default=func.now()
+    )
+
+    last_checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(datetime.timezone.utc),
+        server_default=func.now()
+    )
+
+    output_file_id: Mapped[str] = mapped_column(
+        String,
+        default = lambda : None,
+        nullable=True
     )
 
     status: Mapped[str] = mapped_column(
@@ -164,4 +171,94 @@ class Batch(Base):
     api_calls: Mapped[list["BatchAPICall"]] = relationship(
         back_populates="batch",
         cascade="all, delete-orphan"
+    )
+
+class ImageRecord(Base):
+    __tablename__ = "image_record"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("batch.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    filename: Mapped[str] = mapped_column(
+        Text,
+        nullable=False
+    )
+
+    # status: Mapped[str] = mapped_column(
+    #     String(50),
+    #     default="pending",
+    #     server_default="pending"
+    # )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(datetime.timezone.utc),
+        server_default=func.now()
+    )
+
+    generated_alt_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True
+    )
+
+    raw_response: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True
+    )
+
+    metadata: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True
+    )
+
+    batch: Mapped["Batch"] = relationship(
+        back_populates="images"
+    )
+
+class BatchAPICall(Base):
+    __tablename__ = "batch_api_call"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("batch.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(datetime.timezone.utc),
+        server_default=func.now()
+    )
+
+    request_payload: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False
+    )
+
+    response_payload: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False
+    )
+
+    success: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true"
+    )
+
+    batch: Mapped["Batch"] = relationship(
+        back_populates="api_calls"
     )
