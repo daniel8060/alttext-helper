@@ -6,15 +6,15 @@ import base64
 import json
 import time
 import pandas as pd
+import datetime
 
 from config import get_customer_settings
-from utils import split_zip_to_batches_by_size, write_jsonl_batch, generate_batch_filename
+from utils import split_zip_to_batches_by_size, write_jsonl_batch, generate_batch_filename, to_pst
 from batch import upload_batch_file, create_batch, load_finished_captions
 
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 customer_settings = get_customer_settings()
-default_prompt = customer_settings['prompt']
 
 st.title("Alt-Text Batch Generator")
 st.write(f"Max image size: {customer_settings['max_size_tuple']}")
@@ -45,19 +45,18 @@ with st.form(key="alttext_form"):
     subm = st.form_submit_button("Generate Alt Text Batches")
 
 if subm and uploaded_file:
-    submit_prompt = default_prompt.replace("__tone__", selected_tone)
     all_batches = []
     with st.spinner("Splitting ZIP into batches..."):
         batches_generator = split_zip_to_batches_by_size(
             zip_path=uploaded_file,
-            prompt=submit_prompt,
+            prompt=customer_settings["prompt"],
             maxsize=customer_settings["max_size_tuple"],
             model="gpt-4o-mini",
             max_lines=1000,
             max_bytes=190 * 1024 * 1024
         )
         for i, lines in enumerate(batches_generator):
-            jsonl_path = generate_batch_filename(suffix=f"_part{i}")
+            jsonl_path = generate_batch_filename(suffix=f"_part{i+1}")
             write_jsonl_batch(lines, jsonl_path)
             st.success(f"Wrote batch file: {jsonl_path.name}")
 
@@ -72,13 +71,20 @@ if subm and uploaded_file:
 
     st.success("All batches created successfully.")
 
+#
+#all debugging stuff basically
+#
 # List recent batches
 st.header("Recent Batches")
-batches = client.batches.list(limit=10)
-st.table(pd.DataFrame(
+batches = client.batches.list(limit=20)
+df = pd.DataFrame(
     columns=["id", "status", "output_file_id", "created_at"],
     data=[(b.id, b.status, b.output_file_id, b.created_at) for b in batches.data]
-))
+    )
+# Convert timestamps to PST
+df["created_at"] = df["created_at"].apply(to_pst)
+#now display it
+st.table(df)
 
 # Optionally test a known output file
 test_file = st.text_input("Output File ID to Preview Captions", value="")

@@ -9,6 +9,13 @@ from pathlib import Path
 import logging 
 from typing import Iterator
 from pydantic import BaseModel, Field
+import pytz
+
+
+def to_pst(timestamp):
+    pst = pytz.timezone("America/Los_Angeles")
+    utc_time = datetime.datetime.fromtimestamp(timestamp, tz=pytz.utc)
+    return utc_time.astimezone(pst).strftime("%Y-%m-%d %I:%M:%S %p")
 
 def is_valid_image(file: str) -> bool:
     """Check if the file is a valid image based on its extension and that is not a mac __MACOSX file."""
